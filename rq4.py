@@ -591,12 +591,4 @@ def rq4_inference():
     return results_df
 
 
-
-models = ["TabPFN_v2", "TabPFN_v2.5", "TabPFN_v3", "TabICL"]
-
-for model in models:
-    print(f"Starting RQ4 Experimentation with model {model}")
-    run_rq4_1_experiment(model=model)
-    rq4_2_experiment(model=model)
-rq4_inference()
     
