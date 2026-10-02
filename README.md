@@ -1,4 +1,5 @@
-Bachelor Thesis: Benchmarking Tabular Foundation Models & Uncertainty Quantification
+Bachelor Thesis: Uncertainty Quantification Methods for TabPFN
+
 
 This repository contains the official source code, evaluation tools, and experimental execution pipelines for the Bachelor Thesis. The benchmark evaluates state-of-the-art **Tabular Foundation Models** (**TabPFN v2, v2.5, v3** and **TabICL**) across prediction accuracy, uncertainty quantification (Conformal Prediction vs. Martingale Posteriors), robustness under noise/scaling regimes, and inference efficiency.
 
