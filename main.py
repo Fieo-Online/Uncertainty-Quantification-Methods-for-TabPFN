@@ -64,8 +64,8 @@ def main():
             rq4_2_experiment(model=model)
         
         # 2. Inference latency benchmark across all models
-        print("\n---> Starting RQ4 Inference Benchmark...")
-        rq4_inference()
+            print("\n---> Starting RQ4 Inference Benchmark...")
+            rq4_inference()
 
 if __name__ == "__main__":
     main()
