@@ -1,0 +1,215 @@
+from tabpfn import TabPFNRegressor
+import matplotlib.pyplot as plt
+from sklearn.datasets import fetch_california_housing
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import mean_squared_error
+import pandas as pd
+import numpy as np
+import openml, time, os
+from src import dataloader, training, utils
+from datetime import datetime
+from xgboost import XGBRegressor
+from mapie.regression import SplitConformalRegressor
+from mapie.utils import train_conformalize_test_split
+import mapie as mp
+os.environ["TABPFN_TOKEN"] = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyIjoiZGM3YzVkZmQtYTJmNC00MDZmLWIxMjYtNjgzN2JlYWQ5NTMzIiwiZXhwIjoxODEwNDY1ODg0fQ.kT5eCkRjpz4UMq0ipkEwJq7HK1rwqKVgLgs9UVjttn8"
+
+def epistemic_experiment():
+    """Testing TabPFN with the conformal prediction method MAPIE for epistemic uncertainty(lack of data).
+    TabPFN is getting trained with a sample size of 5, 15 and 50 to see how much the model improves. Different kinds of noise are also added.
+    """
+    sample_sizes = [5, 15, 50]
+    noise_scenarios = ["none", "constant", "increasing"]
+    type="parabola"
+
+    # Building plot grid, 3 rows and 3 columns
+    fig, axes = plt.subplots(len(noise_scenarios), len(sample_sizes), figsize=(15, 12), sharex=True, sharey=True)
+
+    for row_idx, noise_type in enumerate(noise_scenarios):
+        for col_idx, n_samples in enumerate(sample_sizes):
+            
+            ax = axes[row_idx, col_idx]
+            
+            # Data for the different types of noise
+            if noise_type == "none":
+                X, y, uq, y_true = dataloader.generate_synthetic_data(n_samples=1000, type=type, noise=False)
+            if noise_type == "constant":
+                X, y, uq, y_true = dataloader.generate_synthetic_data(n_samples=1000, type=type, noise=False)
+                y = dataloader.create_target_noise(y,noise_level=1)
+            if noise_type == "increasing":
+                X, y, uq, y_true = dataloader.generate_synthetic_data(n_samples=1000, type=type, noise=True)
+
+            base_model = TabPFNRegressor()
+            
+            #Ratio of testing- & conformalizing-set depending on n_samples
+            tr = n_samples/1000
+            temp = 1-tr
+            c =  temp * (4/6)
+            te = temp * (2/6)
+            X_train, X_conformalize, X_test, y_train, y_conformalize, y_test = train_conformalize_test_split(
+            X, y, train_size=tr, conformalize_size=c, test_size=te
+            )
+
+            base_model.fit(X_train,y_train)
+            mapie_model = SplitConformalRegressor(estimator=base_model, prefit=True)
+            mapie_model.conformalize(X_conformalize,y_conformalize)
+
+            X_test = X_test.sort_values(by="feature_1")
+            y_pred, y_pis = mapie_model.predict_interval(X_test)
+            yt_pred = base_model.predict(X_test, output_type="quantiles", quantiles=[0.05,0.95])
+            
+            # Intervalle extrahieren
+            lower_bounds = y_pis[:, 0, 0]
+            upper_bounds = y_pis[:, 1, 0]
+    
+            yt_pred = np.asarray(yt_pred)
+            tab_lower_bounds = yt_pred[0,:]  
+            tab_upper_bounds = yt_pred[1,:] 
+            
+            #True plot
+            ax.plot(X_test, X_test**2, color="black", linestyle="--", alpha=0.5, label="Wahre Funktion")
+            
+            # Ploting training data as points
+            ax.scatter(X_train, y_train, color="red", alpha=0.7, label=f"Trainingsdaten (N={n_samples})")
+            
+            # TabPFN prediciton
+            ax.plot(X_test, y_pred, color="blue", label="TabPFN Vorhersage")
+            
+            # MAPIE uncertainty via shaded interval
+            print(X_test)
+            ax.fill_between(X_test.to_numpy().flatten(), lower_bounds, upper_bounds, color="blue", alpha=0.15, label="MAPIE 95% Intervall")
+            ax.fill_between(X_test.to_numpy().flatten(), tab_lower_bounds, tab_upper_bounds, color="green", alpha=0.15, label="TabPFN 90% Intervall")
+            # Fine-tuning
+            if row_idx == 0:
+                ax.set_title(f"Stichprobengröße: {n_samples}", fontsize=12, fontweight='bold')
+            if col_idx == 0:
+                ax.set_ylabel(f"Rauschen: {noise_type.upper()}", fontsize=12, fontweight='bold')
+                
+            ax.grid(True, alpha=0.3)
+            if row_idx == 0 and col_idx == 0:
+                ax.legend(loc="upper center")
+
+    plt.tight_layout()
+    plt.suptitle("Epistemische Unsicherheit bei TabPFN (Datenknappheit & Rauschen)", y=1.02, fontsize=16, fontweight='bold')
+    plt.show()
+
+def OOD_experiment():
+    """Out of distribution experiment. Training the model for example, only on data from range -5 to 5 and then letting it predict
+     values outside of that range."""
+    
+    X, y, uq, y_true = dataloader.generate_synthetic_data(type="parabola", noise=False)
+    #y = dataloader.create_target_noise(y, noise_level=0.2)
+
+    base_model = TabPFNRegressor()
+    #Only training on data in certain interval
+    X_train = X.iloc[300:700]
+    y_train = y.iloc[300:700]
+
+    X_conformalize, X_train, y_conformalize, y_train, = train_test_split(X_train, y_train, test_size=0.7)
+
+    base_model.fit(X_train,y_train)
+    mapie_model = SplitConformalRegressor(estimator=base_model, prefit=True)
+    mapie_model.conformalize(X_conformalize,y_conformalize)
+
+    #90% interval
+    y_pred, y_pis = mapie_model.predict_interval(X)
+    yt_pred = base_model.predict(X, output_type="quantiles", quantiles=[0.05,0.95])
+
+    lower_bounds = np.asarray(y_pis[:, 0, 0])
+    upper_bounds = np.asarray(y_pis[:, 1, 0])
+
+    yt_pred = np.asarray(yt_pred)
+    tab_lower_bounds = yt_pred[0,:]  
+    tab_upper_bounds = yt_pred[1,:] 
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+    X_plot = X["feature_1"]
+
+    # True function
+    ax.plot(X_plot,X_plot**2 , color="black", linestyle="--", alpha=0.6, label="Wahre Funktion")
+
+    # Ploting training and calibration data as points
+    ax.scatter(X_train["feature_1"], y_train, color="red", alpha=0.5, s=15, label=f"Trainingsdaten (ID):{len(X_train)}")
+    ax.scatter(X_conformalize["feature_1"], y_conformalize, color="orange", alpha=0.5, s=15, label=f"Kalibrierungsdaten (ID):{len(X_conformalize)}")
+
+    # TabPFN prediction
+    ax.plot(X_plot, y_pred, color="blue", linewidth=2, label="TabPFN Vorhersage")
+
+    # MAPIE uncertainty interval
+    ax.fill_between(X_plot, lower_bounds, upper_bounds, color="blue", alpha=0.15, label="MAPIE 90% Intervall")
+    ax.fill_between(X_plot, tab_lower_bounds, tab_upper_bounds, color="green", alpha=0.15, label="TabPFN 90% Intervall")
+    # OOD Zones as seperation marker
+    ax.axvspan(X_train["feature_1"].min(), X_train["feature_1"].min()-3, color="gray", alpha=0.1, label="OOD Bereich")
+    ax.axvspan(X_train["feature_1"].max(), X_train["feature_1"].max()+3, color="gray", alpha=0.1)
+
+    # Fine-tuning
+    ax.set_title("OOD-Extrapolations-Experiment (TabPFN + MAPIE)", fontsize=14, fontweight="bold")
+    ax.set_xlabel("X (Feature)")
+    ax.set_ylabel("Y (Target)")
+    ax.grid(True, alpha=0.3)
+    ax.legend(loc="upper left")
+
+    plt.show()
+
+def holes_experiment():
+    """Experiment on how the model will react to 'holes' in the data."""
+    X, y, uq, y_true = dataloader.generate_synthetic_data(v_range=500, n_samples=2000, type="parabola", noise=False) #From -500 to 500
+    #y = dataloader.create_target_noise(y, noise_level=0.2)
+
+    base_model = TabPFNRegressor(ignore_pretraining_limits=True)
+
+    X = X.drop(range(800,1200))
+    y = y.drop(range(800,1200))
+
+    X_conformalize, X_train, y_conformalize, y_train, = train_test_split(X, y, test_size=0.7)
+    
+    base_model.fit(X_train, y_train)
+    mapie_model = SplitConformalRegressor(estimator=base_model, prefit=True)
+    mapie_model.conformalize(X_conformalize,y_conformalize)
+
+    X_test_dense = pd.DataFrame({"feature_1": np.linspace(-500, 500, 3000)})
+    #90% interval
+    y_pred, y_pis = mapie_model.predict_interval(X_test_dense)
+    yt_pred = base_model.predict(X_test_dense, output_type="quantiles", quantiles=[0.05,0.95])
+
+    #Mappie interval
+    lower_bounds = np.asarray(y_pis[:, 0, 0])
+    upper_bounds = np.asarray(y_pis[:, 1, 0])
+    #TabPFN interval
+    yt_pred = np.asarray(yt_pred)
+
+    tab_lower_bounds = yt_pred[0,:]  
+    tab_upper_bounds = yt_pred[1,:] 
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+    X_plot = X_test_dense["feature_1"].to_numpy().flatten()
+
+    # True function
+    ax.plot(X_plot, X_plot**2, color="black", linestyle="--", alpha=0.6, label="Wahre Funktion")
+
+    # Training and calibration data as points
+    ax.scatter(X_train["feature_1"], y_train, color="red", alpha=0.5, s=15, label=f"Trainingsdaten (ID):{len(X_train)}")
+    ax.scatter(X_conformalize["feature_1"], y_conformalize, color="orange", alpha=0.5, s=15, label=f"Kalibrierungsdaten (ID):{len(X_conformalize)}")
+
+    # TabPFN prediction
+    ax.plot(X_plot, y_pred, color="blue", linewidth=2, label="TabPFN Vorhersage")
+
+    # MAPIE uncertainty interval
+    ax.fill_between(X_plot, lower_bounds, upper_bounds, color="blue", alpha=0.15, label="MAPIE 90% Intervall")
+    ax.fill_between(X_plot, tab_lower_bounds, tab_upper_bounds, color="green", alpha=0.15, label="TabPFN 90% Intervall")
+
+    # Datahole
+    ax.axvspan(-100, 100, color="red", alpha=0.08, label="Data Hole (Keine Daten)")
+
+    # Fine tuning
+    ax.set_title("Data Holes Experiment: Lokale epistemische Unsicherheit", fontsize=14, fontweight="bold")
+    ax.set_xlabel("X (Feature)")
+    ax.set_ylabel("Y (Target)")
+    ax.grid(True, alpha=0.3)
+    ax.legend(loc="upper left")
+
+    plt.show()
+
+epistemic_experiment()
+OOD_experiment()
+holes_experiment()

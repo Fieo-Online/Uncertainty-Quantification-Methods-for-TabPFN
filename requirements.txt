@@ -1,0 +1,11 @@
+mapie==1.4.1
+matplotlib==3.11.2
+numpy==2.5.3
+openml==0.15.1
+pandas==3.0.6
+pyvinecopulib==1.0.0
+scikit_learn==1.9.1
+scipy==1.18.1
+setuptools==81.0.0
+tabicl==2.2.0
+tabpfn==8.5.0
