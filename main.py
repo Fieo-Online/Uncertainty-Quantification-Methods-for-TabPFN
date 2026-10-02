@@ -22,7 +22,7 @@ def main():
     parser.add_argument(
         "--scenario", 
         type=str, 
-        default="clean", 
+        default="tabarena", 
         help="Dataset scenario name (e.g., 'clean', 'tabarena')."
     )
 

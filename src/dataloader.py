@@ -261,7 +261,7 @@ def generate_scenario_data(scenario_name, n_samples=1000):
     # -------------------------------------------------------------
     elif scenario_name.startswith("tabarena"):
         datasets = []
-        for id in [0, 3, 6, 8, 10, 11]: #dataset_ids
+        for id in dataset_ids: #dataset_ids [0, 3, 6, 8, 10, 11]
             datasets.append((openml_data(dataset_ids[id])))
 
     # 1. Transform Nominal data into unique numbers (1,2,3,4,...)

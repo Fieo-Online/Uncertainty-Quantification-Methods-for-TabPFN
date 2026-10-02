@@ -66,16 +66,16 @@ def evaluate_interval_quality(y_true, lower_bounds, upper_bounds, alpha=0.10):
         "covered_mask": covered
     }
 
-def run_rq1_experiment(scenario_name="hetero", n_samples=400, cal_ratio=0.3):
+def run_rq1_experiment(scenario="hetero", n_samples=400, cal_ratio=0.3):
     """Runs the Research Question 1 (RQ1) experiment comparing TabPFN Posterior Predictive Distribution (PPD) intervals 
     against MAPIE conformalized prediction intervals across multiple confidence levels.
 
     Parameters
     ----------
-    scenario_name : str, default="hetero"
+    scenario : str, default="hetero"
         Name of the data scenario to evaluate (e.g., "hetero", "tabarena", "data_gap").
     n_samples : int, default=400
-        Number of synthetic samples generated per dataset (only applicable when scenario_name="hetero").
+        Number of synthetic samples generated per dataset (only applicable when scenario="hetero").
     cal_ratio : float, default=0.3
         Proportion of the training split reserved as calibration data for MAPIE conformalization.
 
@@ -85,7 +85,7 @@ def run_rq1_experiment(scenario_name="hetero", n_samples=400, cal_ratio=0.3):
         Appends metrics to 'rq1results.csv', renders and saves coverage plots to disk, and prints summary tables.
     """
     print(f"==================================================")
-    print(f" Running RQ1 Evaluation on Scenario: '{scenario_name}'")
+    print(f" Running RQ1 Evaluation on Scenario: '{scenario}'")
     print(f"==================================================\n")
 
     #Define confidence levels for testing (50%, 80%, 85%, 90%)
@@ -93,7 +93,7 @@ def run_rq1_experiment(scenario_name="hetero", n_samples=400, cal_ratio=0.3):
     alphas = [1.0 - c for c in target_confidence_levels]
 
     datasets = dataloader.generate_scenario_data(
-        scenario_name, n_samples=n_samples
+        scenario, n_samples=n_samples
     )
     summary_results = []
 
@@ -103,7 +103,7 @@ def run_rq1_experiment(scenario_name="hetero", n_samples=400, cal_ratio=0.3):
             X, y, test_size=0.2
             )
         
-        if scenario_name in ["hetero","data_gap"]:
+        if scenario in ["hetero","data_gap"]:
             X_test = X_test.sort_values(by="feature_1")
             y_test = y_test.loc[X_test.index]
 
@@ -214,7 +214,7 @@ def run_rq1_experiment(scenario_name="hetero", n_samples=400, cal_ratio=0.3):
 
         #Visualizing the Plots and the interval coverage for synthetic datasets
         packs = [X_test_list, X_train_list, y_train_list, y_pred_list, mapie_low_list, mapie_high_list, ppd_low_list, ppd_high_list, conf_level_list]
-        if scenario_name in ["hetero","data_gap"]:
+        if scenario in ["hetero","data_gap"]:
             utils.coverage_plot(len(target_confidence_levels), packs,title=f"{conf_level*100}% Coverage Plot MAPPIE VS. PPD- {dataset_name}")
 
         #Visualization for the 95% confidence interval MAPPIE
